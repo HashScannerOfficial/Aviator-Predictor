@@ -1,0 +1,46 @@
+name: Create Deployment on Release
+
+on:
+  release:
+    types: [ published ]
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  create_and_mark_deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create deployment record
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const resp = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.release.tag_name,
+              required_contexts: [],
+              environment: "production",
+              description: "Release published - deployment record created by Actions",
+              auto_merge: false
+            });
+            core.setOutput("deployment_id", resp.data.id);
+
+      - name: Mark deployment status: success
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const deployId = parseInt('${{ steps.create_and_mark_deployment.outputs.deployment_id }}') || parseInt('${{ steps.create_and_mark_deployment.outputs.deployment_id }}');
+            // Fallback: read id from previous step if necessary
+            const id = deployId || (await github.rest.repos.listDeployments({ owner: context.repo.owner, repo: context.repo.repo, ref: context.payload.release.tag_name })).data[0].id;
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: id,
+              state: "success",
+              environment_url: "https://decryptor.net/",
+              description: "Marked successful by Actions"
+            });
