@@ -12,12 +12,13 @@ jobs:
   create_and_mark_deployment:
     runs-on: ubuntu-latest
     steps:
-      - name: Create deployment record
+      - name: Create deployment and mark success
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const resp = await github.rest.repos.createDeployment({
+            // create a deployment for the released tag/ref
+            const deployment = await github.rest.repos.createDeployment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.payload.release.tag_name,
@@ -26,21 +27,15 @@ jobs:
               description: "Release published - deployment record created by Actions",
               auto_merge: false
             });
-            core.setOutput("deployment_id", resp.data.id);
 
-      - name: Mark deployment status: success
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const deployId = parseInt('${{ steps.create_and_mark_deployment.outputs.deployment_id }}') || parseInt('${{ steps.create_and_mark_deployment.outputs.deployment_id }}');
-            // Fallback: read id from previous step if necessary
-            const id = deployId || (await github.rest.repos.listDeployments({ owner: context.repo.owner, repo: context.repo.repo, ref: context.payload.release.tag_name })).data[0].id;
+            // mark deployment as successful and attach the environment URL
             await github.rest.repos.createDeploymentStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              deployment_id: id,
-              state: "success",
+              deployment_id: deployment.data.id,
+              state: "success",                     // in_progress | success | failure | inactive
               environment_url: "https://decryptor.net/",
               description: "Marked successful by Actions"
             });
+
+            core.info(`Created deployment ${deployment.data.id} and marked success.`);
