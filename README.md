@@ -1,5 +1,5 @@
 
-# Aviator Crash Predictor
+# Decryptor - Aviator Crash Predictor
 
 <p align="center">
 <img src="https://decryptor.net/wp-content/uploads/2025/06/roo.png" alt="Aviator Predictor logo — aviator predictor apk" />
