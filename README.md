@@ -15,7 +15,7 @@
 <h4 align=center>Available for Windows, iOS, and Android<br> <br>
 <div align="center">
      
-<img src="https://github.com/user-attachments/assets/99698c98-e87a-4ce0-9b9e-6b21c7bcf981" width="100">
+<img src="https://decryptor.net/wp-content/uploads/2025/09/flame-21186_256.gif" width="100">
 
 </div><br><br>
 
