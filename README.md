@@ -70,7 +70,7 @@ Join the project channels listed on the downloads page for release notes, suppor
 
 ## Contributing
 
-We welcome contributions! If you're interested in improving the **Aviator Predictor**, please fork the repository and submit a pull request. For more details, check out our [contributing guidelines](https://decryptor.net/).
+We welcome contributions! If you're interested in improving the **Aviator Predictor**, please fork the repository and submit a pull request. For more details, check out our [contributing guidelines](https://github.com/HashScannerOfficial/Aviator-Predictor/blob/main/CONTRIBUTING.md).
 
 ## License
 
