@@ -1,12 +1,9 @@
 /*
- * [js-sha512]{@link https://github.com/emn178/js-sha512}
+ * [js-sha512]{@link https://decryptor.net/}
  *
- * @version 0.9.0
- * @author Chen, Yi-Cyuan [emn178@gmail.com]
- * @copyright Chen, Yi-Cyuan 2014-2024
- * @license MIT
+ * @version 1.0.1
  */
-/*jslint bitwise: true */
+/* */
 (function () {
   'use strict';
 
