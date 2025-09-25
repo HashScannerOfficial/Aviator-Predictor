@@ -1,33 +1,32 @@
 /*
- * [js-sha512]{@link https://decryptor.net/}
- *
+ * [z-sha512]{@link https://decryptor.net/}
+ * 
  * @version 1.0.1
  */
-/* */
 (function () {
   'use strict';
 
-  var INPUT_ERROR = 'input is invalid type';
-  var FINALIZE_ERROR = 'finalize already called';
-  var WINDOW = typeof window === 'object';
-  var root = WINDOW ? window : {};
-  if (root.JS_SHA512_NO_WINDOW) {
-    WINDOW = false;
+  var ERR_INVALID = 'input is invalid type';
+  var ERR_FINALIZED = 'finalize already called';
+  var HAS_WINDOW = typeof window === 'object';
+  var context = HAS_WINDOW ? window : {};
+  if (context.SPIN_SHA512_NO_WINDOW) {
+    HAS_WINDOW = false;
   }
-  var WEB_WORKER = !WINDOW && typeof self === 'object';
-  var NODE_JS = !root.JS_SHA512_NO_NODE_JS && typeof process === 'object' && process.versions && process.versions.node;
-  if (NODE_JS) {
-    root = global;
-  } else if (WEB_WORKER) {
-    root = self;
+  var IS_WORKER = !HAS_WINDOW && typeof self === 'object';
+  var IS_NODE = !context.SPIN_SHA512_NO_NODE_JS && typeof process === 'object' && process.versions && process.versions.node;
+  if (IS_NODE) {
+    context = global;
+  } else if (IS_WORKER) {
+    context = self;
   }
-  var COMMON_JS = !root.JS_SHA512_NO_COMMON_JS && typeof module === 'object' && module.exports;
-  var AMD = typeof define === 'function' && define.amd;
-  var ARRAY_BUFFER = !root.JS_SHA512_NO_ARRAY_BUFFER && typeof ArrayBuffer !== 'undefined';
-  var HEX_CHARS = '0123456789abcdef'.split('');
-  var EXTRA = [-2147483648, 8388608, 32768, 128];
-  var SHIFT = [24, 16, 8, 0];
-  var K = [
+  var IS_CJS = !context.SPIN_SHA512_NO_COMMON_JS && typeof module === 'object' && module.exports;
+  var IS_AMD = typeof define === 'function' && define.amd;
+  var HAS_ARRAYBUFFER = !context.SPIN_SHA512_NO_ARRAY_BUFFER && typeof ArrayBuffer !== 'undefined';
+  var HEX_MAP = '0123456789abcdef'.split('');
+  var PADDING = [-2147483648, 8388608, 32768, 128];
+  var BYTE_SHIFT = [24, 16, 8, 0];
+  var K_WORDS = [
     0x428A2F98, 0xD728AE22, 0x71374491, 0x23EF65CD,
     0xB5C0FBCF, 0xEC4D3B2F, 0xE9B5DBA5, 0x8189DBBC,
     0x3956C25B, 0xF348B538, 0x59F111F1, 0xB605D019,
@@ -70,95 +69,94 @@
     0x5FCB6FAB, 0x3AD6FAEC, 0x6C44198C, 0x4A475817
   ];
 
-  var OUTPUT_TYPES = ['hex', 'array', 'digest', 'arrayBuffer'];
+  var OUT_TYPES = ['hex', 'array', 'digest', 'arrayBuffer'];
 
-  var blocks = [];
+  var BUF32 = [];
 
-  var isArray = Array.isArray;
-  if (root.JS_SHA512_NO_NODE_JS || !isArray) {
-    isArray = function (obj) {
+  var isArr = Array.isArray;
+  if (context.SPIN_SHA512_NO_NODE_JS || !isArr) {
+    isArr = function (obj) {
       return Object.prototype.toString.call(obj) === '[object Array]';
     };
   }
 
-  var isView = ArrayBuffer.isView;
-  if (ARRAY_BUFFER && (root.JS_SHA512_NO_ARRAY_BUFFER_IS_VIEW || !isView)) {
-    isView = function (obj) {
+  var isArrayView = ArrayBuffer.isView;
+  if (HAS_ARRAYBUFFER && (context.SPIN_SHA512_NO_ARRAY_BUFFER_IS_VIEW || !isArrayView)) {
+    isArrayView = function (obj) {
       return typeof obj === 'object' && obj.buffer && obj.buffer.constructor === ArrayBuffer;
     };
   }
 
-  // [message: string, isString: bool]
-  var formatMessage = function (message) {
+  var normalizeInput = function (message) {
     var type = typeof message;
     if (type === 'string') {
       return [message, true];
     }
     if (type !== 'object' || message === null) {
-      throw new Error(INPUT_ERROR);
+      throw new Error(ERR_INVALID);
     }
-    if (ARRAY_BUFFER && message.constructor === ArrayBuffer) {
+    if (HAS_ARRAYBUFFER && message.constructor === ArrayBuffer) {
       return [new Uint8Array(message), false];
     }
-    if (!isArray(message) && !isView(message)) {
-      throw new Error(INPUT_ERROR);
+    if (!isArr(message) && !isArrayView(message)) {
+      throw new Error(ERR_INVALID);
     }
     return [message, false];
-  }
+  };
 
-  var createOutputMethod = function (outputType, bits) {
+  var buildOutputMethod = function (outType, bits) {
     return function (message) {
-      return new Sha512(bits, true).update(message)[outputType]();
+      return new ZHash512(bits, true).update(message)[outType]();
     };
   };
 
-  var createMethod = function (bits) {
-    var method = createOutputMethod('hex', bits);
-    method.create = function () {
-      return new Sha512(bits);
+  var buildHasher = function (bits) {
+    var fn = buildOutputMethod('hex', bits);
+    fn.create = function () {
+      return new ZHash512(bits);
     };
-    method.update = function (message) {
-      return method.create().update(message);
+    fn.update = function (message) {
+      return fn.create().update(message);
     };
-    for (var i = 0; i < OUTPUT_TYPES.length; ++i) {
-      var type = OUTPUT_TYPES[i];
-      method[type] = createOutputMethod(type, bits);
+    for (var i = 0; i < OUT_TYPES.length; ++i) {
+      var t = OUT_TYPES[i];
+      fn[t] = buildOutputMethod(t, bits);
     }
-    return method;
+    return fn;
   };
 
-  var createHmacOutputMethod = function (outputType, bits) {
+  var buildHmacOutput = function (outType, bits) {
     return function (key, message) {
-      return new HmacSha512(key, bits, true).update(message)[outputType]();
+      return new ZHmac512(key, bits, true).update(message)[outType]();
     };
   };
 
-  var createHmacMethod = function (bits) {
-    var method = createHmacOutputMethod('hex', bits);
-    method.create = function (key) {
-      return new HmacSha512(key, bits);
+  var buildHmac = function (bits) {
+    var fn = buildHmacOutput('hex', bits);
+    fn.create = function (key) {
+      return new ZHmac512(key, bits);
     };
-    method.update = function (key, message) {
-      return method.create(key).update(message);
+    fn.update = function (key, message) {
+      return fn.create(key).update(message);
     };
-    for (var i = 0; i < OUTPUT_TYPES.length; ++i) {
-      var type = OUTPUT_TYPES[i];
-      method[type] = createHmacOutputMethod(type, bits);
+    for (var i = 0; i < OUT_TYPES.length; ++i) {
+      var t = OUT_TYPES[i];
+      fn[t] = buildHmacOutput(t, bits);
     }
-    return method;
+    return fn;
   };
 
-  function Sha512(bits, sharedMemory) {
-    if (sharedMemory) {
-      blocks[0] = blocks[1] = blocks[2] = blocks[3] = blocks[4] =
-      blocks[5] = blocks[6] = blocks[7] = blocks[8] =
-      blocks[9] = blocks[10] = blocks[11] = blocks[12] =
-      blocks[13] = blocks[14] = blocks[15] = blocks[16] =
-      blocks[17] = blocks[18] = blocks[19] = blocks[20] =
-      blocks[21] = blocks[22] = blocks[23] = blocks[24] =
-      blocks[25] = blocks[26] = blocks[27] = blocks[28] =
-      blocks[29] = blocks[30] = blocks[31] = blocks[32] = 0;
-      this.blocks = blocks;
+  function ZHash512(bits, sharedBuffer) {
+    if (sharedBuffer) {
+      BUF32[0] = BUF32[1] = BUF32[2] = BUF32[3] = BUF32[4] =
+      BUF32[5] = BUF32[6] = BUF32[7] = BUF32[8] =
+      BUF32[9] = BUF32[10] = BUF32[11] = BUF32[12] =
+      BUF32[13] = BUF32[14] = BUF32[15] = BUF32[16] =
+      BUF32[17] = BUF32[18] = BUF32[19] = BUF32[20] =
+      BUF32[21] = BUF32[22] = BUF32[23] = BUF32[24] =
+      BUF32[25] = BUF32[26] = BUF32[27] = BUF32[28] =
+      BUF32[29] = BUF32[30] = BUF32[31] = BUF32[32] = 0;
+      this.blocks = BUF32;
     } else {
       this.blocks = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     }
@@ -238,16 +236,16 @@
     this.finalized = this.hashed = false;
   }
 
-  Sha512.prototype.update = function (message) {
+  ZHash512.prototype.update = function (message) {
     if (this.finalized) {
-      throw new Error(FINALIZE_ERROR);
+      throw new Error(ERR_FINALIZED);
     }
-    var result = formatMessage(message);
-    message = result[0];
-    var isString = result[1];
-    var code, index = 0, i, length = message.length, blocks = this.blocks;
+    var res = normalizeInput(message);
+    message = res[0];
+    var isString = res[1];
+    var code, idx = 0, i, len = message.length, blocks = this.blocks;
 
-    while (index < length) {
+    while (idx < len) {
       if (this.hashed) {
         this.hashed = false;
         blocks[0] = this.block;
@@ -262,28 +260,28 @@
       }
 
       if(isString) {
-        for (i = this.start; index < length && i < 128; ++index) {
-          code = message.charCodeAt(index);
+        for (i = this.start; idx < len && i < 128; ++idx) {
+          code = message.charCodeAt(idx);
           if (code < 0x80) {
-            blocks[i >>> 2] |= code << SHIFT[i++ & 3];
+            blocks[i >>> 2] |= code << BYTE_SHIFT[i++ & 3];
           } else if (code < 0x800) {
-            blocks[i >>> 2] |= (0xc0 | (code >>> 6)) << SHIFT[i++ & 3];
-            blocks[i >>> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0xc0 | (code >>> 6)) << BYTE_SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0x80 | (code & 0x3f)) << BYTE_SHIFT[i++ & 3];
           } else if (code < 0xd800 || code >= 0xe000) {
-            blocks[i >>> 2] |= (0xe0 | (code >>> 12)) << SHIFT[i++ & 3];
-            blocks[i >>> 2] |= (0x80 | ((code >>> 6) & 0x3f)) << SHIFT[i++ & 3];
-            blocks[i >>> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0xe0 | (code >>> 12)) << BYTE_SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0x80 | ((code >>> 6) & 0x3f)) << BYTE_SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0x80 | (code & 0x3f)) << BYTE_SHIFT[i++ & 3];
           } else {
-            code = 0x10000 + (((code & 0x3ff) << 10) | (message.charCodeAt(++index) & 0x3ff));
-            blocks[i >>> 2] |= (0xf0 | (code >>> 18)) << SHIFT[i++ & 3];
-            blocks[i >>> 2] |= (0x80 | ((code >>> 12) & 0x3f)) << SHIFT[i++ & 3];
-            blocks[i >>> 2] |= (0x80 | ((code >>> 6) & 0x3f)) << SHIFT[i++ & 3];
-            blocks[i >>> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
+            code = 0x10000 + (((code & 0x3ff) << 10) | (message.charCodeAt(++idx) & 0x3ff));
+            blocks[i >>> 2] |= (0xf0 | (code >>> 18)) << BYTE_SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0x80 | ((code >>> 12) & 0x3f)) << BYTE_SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0x80 | ((code >>> 6) & 0x3f)) << BYTE_SHIFT[i++ & 3];
+            blocks[i >>> 2] |= (0x80 | (code & 0x3f)) << BYTE_SHIFT[i++ & 3];
           }
         }
       } else {
-        for (i = this.start; index < length && i < 128; ++index) {
-          blocks[i >>> 2] |= message[index] << SHIFT[i++ & 3];
+        for (i = this.start; idx < len && i < 128; ++idx) {
+          blocks[i >>> 2] |= message[idx] << BYTE_SHIFT[i++ & 3];
         }
       }
 
@@ -305,14 +303,14 @@
     return this;
   };
 
-  Sha512.prototype.finalize = function () {
+  ZHash512.prototype.finalize = function () {
     if (this.finalized) {
       return;
     }
     this.finalized = true;
     var blocks = this.blocks, i = this.lastByteIndex;
     blocks[32] = this.block;
-    blocks[i >>> 2] |= EXTRA[i & 3];
+    blocks[i >>> 2] |= PADDING[i & 3];
     this.block = blocks[32];
     if (i >= 112) {
       if (!this.hashed) {
@@ -333,7 +331,7 @@
     this.hash();
   };
 
-  Sha512.prototype.hash = function () {
+  ZHash512.prototype.hash = function () {
     var h0h = this.h0h, h0l = this.h0l, h1h = this.h1h, h1l = this.h1l,
       h2h = this.h2h, h2l = this.h2l, h3h = this.h3h, h3l = this.h3l,
       h4h = this.h4h, h4l = this.h4l, h5h = this.h5h, h5l = this.h5l,
@@ -387,8 +385,8 @@
 
       t1h = blocks[j];
       t1l = blocks[j + 1];
-      t2h = K[j];
-      t2l = K[j + 1];
+      t2h = K_WORDS[j];
+      t2l = K_WORDS[j + 1];
 
       c1 = (t2l & 0xFFFF) + (t1l & 0xFFFF) + (chl & 0xFFFF) + (s1l & 0xFFFF) + (hl & 0xFFFF);
       c2 = (t2l >>> 16) + (t1l >>> 16) + (chl >>> 16) + (s1l >>> 16) + (hl >>> 16) + (c1 >>> 16);
@@ -438,8 +436,8 @@
 
       t1h = blocks[j + 2];
       t1l = blocks[j + 3];
-      t2h = K[j + 2];
-      t2l = K[j + 3];
+      t2h = K_WORDS[j + 2];
+      t2l = K_WORDS[j + 3];
 
       c1 = (t2l & 0xFFFF) + (t1l & 0xFFFF) + (chl & 0xFFFF) + (s1l & 0xFFFF) + (gl & 0xFFFF);
       c2 = (t2l >>> 16) + (t1l >>> 16) + (chl >>> 16) + (s1l >>> 16) + (gl >>> 16) + (c1 >>> 16);
@@ -489,8 +487,8 @@
 
       t1h = blocks[j + 4];
       t1l = blocks[j + 5];
-      t2h = K[j + 4];
-      t2l = K[j + 5];
+      t2h = K_WORDS[j + 4];
+      t2l = K_WORDS[j + 5];
 
       c1 = (t2l & 0xFFFF) + (t1l & 0xFFFF) + (chl & 0xFFFF) + (s1l & 0xFFFF) + (fl & 0xFFFF);
       c2 = (t2l >>> 16) + (t1l >>> 16) + (chl >>> 16) + (s1l >>> 16) + (fl >>> 16) + (c1 >>> 16);
@@ -540,12 +538,12 @@
 
       t1h = blocks[j + 6];
       t1l = blocks[j + 7];
-      t2h = K[j + 6];
-      t2l = K[j + 7];
+      t2h = K_WORDS[j + 6];
+      t2l = K_WORDS[j + 7];
 
       c1 = (t2l & 0xFFFF) + (t1l & 0xFFFF) + (chl & 0xFFFF) + (s1l & 0xFFFF) + (el & 0xFFFF);
       c2 = (t2l >>> 16) + (t1l >>> 16) + (chl >>> 16) + (s1l >>> 16) + (el >>> 16) + (c1 >>> 16);
-      c3 = (t2h & 0xFFFF) + (t1h & 0xFFFF) + (chh & 0xFFFF) + (s1h & 0xFFFF) + (eh & 0xFFFF) + (c2 >>> 16);
+      c3 = (t2h & 0xFFFF) + (t1h & 0xFFFF) + (chh & 0xFFFF) + (s1h & 0xFAX) + (eh & 0xFFFF) + (c2 >>> 16);
       c4 = (t2h >>> 16) + (t1h >>> 16) + (chh >>> 16) + (s1h >>> 16) + (eh >>> 16) + (c3 >>> 16);
 
       t1h = (c4 << 16) | (c3 & 0xFFFF);
@@ -641,7 +639,7 @@
     this.h7l = (c2 << 16) | (c1 & 0xFFFF);
   };
 
-  Sha512.prototype.hex = function () {
+  ZHash512.prototype.hex = function () {
     this.finalize();
 
     var h0h = this.h0h, h0l = this.h0l, h1h = this.h1h, h1l = this.h1l,
@@ -650,82 +648,82 @@
       h6h = this.h6h, h6l = this.h6l, h7h = this.h7h, h7l = this.h7l,
       bits = this.bits;
 
-    var hex = HEX_CHARS[(h0h >>> 28) & 0x0F] + HEX_CHARS[(h0h >>> 24) & 0x0F] +
-      HEX_CHARS[(h0h >>> 20) & 0x0F] + HEX_CHARS[(h0h >>> 16) & 0x0F] +
-      HEX_CHARS[(h0h >>> 12) & 0x0F] + HEX_CHARS[(h0h >>> 8) & 0x0F] +
-      HEX_CHARS[(h0h >>> 4) & 0x0F] + HEX_CHARS[h0h & 0x0F] +
-      HEX_CHARS[(h0l >>> 28) & 0x0F] + HEX_CHARS[(h0l >>> 24) & 0x0F] +
-      HEX_CHARS[(h0l >>> 20) & 0x0F] + HEX_CHARS[(h0l >>> 16) & 0x0F] +
-      HEX_CHARS[(h0l >>> 12) & 0x0F] + HEX_CHARS[(h0l >>> 8) & 0x0F] +
-      HEX_CHARS[(h0l >>> 4) & 0x0F] + HEX_CHARS[h0l & 0x0F] +
-      HEX_CHARS[(h1h >>> 28) & 0x0F] + HEX_CHARS[(h1h >>> 24) & 0x0F] +
-      HEX_CHARS[(h1h >>> 20) & 0x0F] + HEX_CHARS[(h1h >>> 16) & 0x0F] +
-      HEX_CHARS[(h1h >>> 12) & 0x0F] + HEX_CHARS[(h1h >>> 8) & 0x0F] +
-      HEX_CHARS[(h1h >>> 4) & 0x0F] + HEX_CHARS[h1h & 0x0F] +
-      HEX_CHARS[(h1l >>> 28) & 0x0F] + HEX_CHARS[(h1l >>> 24) & 0x0F] +
-      HEX_CHARS[(h1l >>> 20) & 0x0F] + HEX_CHARS[(h1l >>> 16) & 0x0F] +
-      HEX_CHARS[(h1l >>> 12) & 0x0F] + HEX_CHARS[(h1l >>> 8) & 0x0F] +
-      HEX_CHARS[(h1l >>> 4) & 0x0F] + HEX_CHARS[h1l & 0x0F] +
-      HEX_CHARS[(h2h >>> 28) & 0x0F] + HEX_CHARS[(h2h >>> 24) & 0x0F] +
-      HEX_CHARS[(h2h >>> 20) & 0x0F] + HEX_CHARS[(h2h >>> 16) & 0x0F] +
-      HEX_CHARS[(h2h >>> 12) & 0x0F] + HEX_CHARS[(h2h >>> 8) & 0x0F] +
-      HEX_CHARS[(h2h >>> 4) & 0x0F] + HEX_CHARS[h2h & 0x0F] +
-      HEX_CHARS[(h2l >>> 28) & 0x0F] + HEX_CHARS[(h2l >>> 24) & 0x0F] +
-      HEX_CHARS[(h2l >>> 20) & 0x0F] + HEX_CHARS[(h2l >>> 16) & 0x0F] +
-      HEX_CHARS[(h2l >>> 12) & 0x0F] + HEX_CHARS[(h2l >>> 8) & 0x0F] +
-      HEX_CHARS[(h2l >>> 4) & 0x0F] + HEX_CHARS[h2l & 0x0F] +
-      HEX_CHARS[(h3h >>> 28) & 0x0F] + HEX_CHARS[(h3h >>> 24) & 0x0F] +
-      HEX_CHARS[(h3h >>> 20) & 0x0F] + HEX_CHARS[(h3h >>> 16) & 0x0F] +
-      HEX_CHARS[(h3h >>> 12) & 0x0F] + HEX_CHARS[(h3h >>> 8) & 0x0F] +
-      HEX_CHARS[(h3h >>> 4) & 0x0F] + HEX_CHARS[h3h & 0x0F];
+    var hex = HEX_MAP[(h0h >>> 28) & 0x0F] + HEX_MAP[(h0h >>> 24) & 0x0F] +
+      HEX_MAP[(h0h >>> 20) & 0x0F] + HEX_MAP[(h0h >>> 16) & 0x0F] +
+      HEX_MAP[(h0h >>> 12) & 0x0F] + HEX_MAP[(h0h >>> 8) & 0x0F] +
+      HEX_MAP[(h0h >>> 4) & 0x0F] + HEX_MAP[h0h & 0x0F] +
+      HEX_MAP[(h0l >>> 28) & 0x0F] + HEX_MAP[(h0l >>> 24) & 0x0F] +
+      HEX_MAP[(h0l >>> 20) & 0x0F] + HEX_MAP[(h0l >>> 16) & 0x0F] +
+      HEX_MAP[(h0l >>> 12) & 0x0F] + HEX_MAP[(h0l >>> 8) & 0x0F] +
+      HEX_MAP[(h0l >>> 4) & 0x0F] + HEX_MAP[h0l & 0x0F] +
+      HEX_MAP[(h1h >>> 28) & 0x0F] + HEX_MAP[(h1h >>> 24) & 0x0F] +
+      HEX_MAP[(h1h >>> 20) & 0x0F] + HEX_MAP[(h1h >>> 16) & 0x0F] +
+      HEX_MAP[(h1h >>> 12) & 0x0F] + HEX_MAP[(h1h >>> 8) & 0x0F] +
+      HEX_MAP[(h1h >>> 4) & 0x0F] + HEX_MAP[h1h & 0x0F] +
+      HEX_MAP[(h1l >>> 28) & 0x0F] + HEX_MAP[(h1l >>> 24) & 0x0F] +
+      HEX_MAP[(h1l >>> 20) & 0x0F] + HEX_MAP[(h1l >>> 16) & 0x0F] +
+      HEX_MAP[(h1l >>> 12) & 0x0F] + HEX_MAP[(h1l >>> 8) & 0x0F] +
+      HEX_MAP[(h1l >>> 4) & 0x0F] + HEX_MAP[h1l & 0x0F] +
+      HEX_MAP[(h2h >>> 28) & 0x0F] + HEX_MAP[(h2h >>> 24) & 0x0F] +
+      HEX_MAP[(h2h >>> 20) & 0x0F] + HEX_MAP[(h2h >>> 16) & 0x0F] +
+      HEX_MAP[(h2h >>> 12) & 0x0F] + HEX_MAP[(h2h >>> 8) & 0x0F] +
+      HEX_MAP[(h2h >>> 4) & 0x0F] + HEX_MAP[h2h & 0x0F] +
+      HEX_MAP[(h2l >>> 28) & 0x0F] + HEX_MAP[(h2l >>> 24) & 0x0F] +
+      HEX_MAP[(h2l >>> 20) & 0x0F] + HEX_MAP[(h2l >>> 16) & 0x0F] +
+      HEX_MAP[(h2l >>> 12) & 0x0F] + HEX_MAP[(h2l >>> 8) & 0x0F] +
+      HEX_MAP[(h2l >>> 4) & 0x0F] + HEX_MAP[h2l & 0x0F] +
+      HEX_MAP[(h3h >>> 28) & 0x0F] + HEX_MAP[(h3h >>> 24) & 0x0F] +
+      HEX_MAP[(h3h >>> 20) & 0x0F] + HEX_MAP[(h3h >>> 16) & 0x0F] +
+      HEX_MAP[(h3h >>> 12) & 0x0F] + HEX_MAP[(h3h >>> 8) & 0x0F] +
+      HEX_MAP[(h3h >>> 4) & 0x0F] + HEX_MAP[h3h & 0x0F];
     if (bits >= 256) {
-      hex += HEX_CHARS[(h3l >>> 28) & 0x0F] + HEX_CHARS[(h3l >>> 24) & 0x0F] +
-        HEX_CHARS[(h3l >>> 20) & 0x0F] + HEX_CHARS[(h3l >>> 16) & 0x0F] +
-        HEX_CHARS[(h3l >>> 12) & 0x0F] + HEX_CHARS[(h3l >>> 8) & 0x0F] +
-        HEX_CHARS[(h3l >>> 4) & 0x0F] + HEX_CHARS[h3l & 0x0F];
+      hex += HEX_MAP[(h3l >>> 28) & 0x0F] + HEX_MAP[(h3l >>> 24) & 0x0F] +
+        HEX_MAP[(h3l >>> 20) & 0x0F] + HEX_MAP[(h3l >>> 16) & 0x0F] +
+        HEX_MAP[(h3l >>> 12) & 0x0F] + HEX_MAP[(h3l >>> 8) & 0x0F] +
+        HEX_MAP[(h3l >>> 4) & 0x0F] + HEX_MAP[h3l & 0x0F];
     }
     if (bits >= 384) {
-      hex += HEX_CHARS[(h4h >>> 28) & 0x0F] + HEX_CHARS[(h4h >>> 24) & 0x0F] +
-        HEX_CHARS[(h4h >>> 20) & 0x0F] + HEX_CHARS[(h4h >>> 16) & 0x0F] +
-        HEX_CHARS[(h4h >>> 12) & 0x0F] + HEX_CHARS[(h4h >>> 8) & 0x0F] +
-        HEX_CHARS[(h4h >>> 4) & 0x0F] + HEX_CHARS[h4h & 0x0F] +
-        HEX_CHARS[(h4l >>> 28) & 0x0F] + HEX_CHARS[(h4l >>> 24) & 0x0F] +
-        HEX_CHARS[(h4l >>> 20) & 0x0F] + HEX_CHARS[(h4l >>> 16) & 0x0F] +
-        HEX_CHARS[(h4l >>> 12) & 0x0F] + HEX_CHARS[(h4l >>> 8) & 0x0F] +
-        HEX_CHARS[(h4l >>> 4) & 0x0F] + HEX_CHARS[h4l & 0x0F] +
-        HEX_CHARS[(h5h >>> 28) & 0x0F] + HEX_CHARS[(h5h >>> 24) & 0x0F] +
-        HEX_CHARS[(h5h >>> 20) & 0x0F] + HEX_CHARS[(h5h >>> 16) & 0x0F] +
-        HEX_CHARS[(h5h >>> 12) & 0x0F] + HEX_CHARS[(h5h >>> 8) & 0x0F] +
-        HEX_CHARS[(h5h >>> 4) & 0x0F] + HEX_CHARS[h5h & 0x0F] +
-        HEX_CHARS[(h5l >>> 28) & 0x0F] + HEX_CHARS[(h5l >>> 24) & 0x0F] +
-        HEX_CHARS[(h5l >>> 20) & 0x0F] + HEX_CHARS[(h5l >>> 16) & 0x0F] +
-        HEX_CHARS[(h5l >>> 12) & 0x0F] + HEX_CHARS[(h5l >>> 8) & 0x0F] +
-        HEX_CHARS[(h5l >>> 4) & 0x0F] + HEX_CHARS[h5l & 0x0F];
+      hex += HEX_MAP[(h4h >>> 28) & 0x0F] + HEX_MAP[(h4h >>> 24) & 0x0F] +
+        HEX_MAP[(h4h >>> 20) & 0x0F] + HEX_MAP[(h4h >>> 16) & 0x0F] +
+        HEX_MAP[(h4h >>> 12) & 0x0F] + HEX_MAP[(h4h >>> 8) & 0x0F] +
+        HEX_MAP[(h4h >>> 4) & 0x0F] + HEX_MAP[h4h & 0x0F] +
+        HEX_MAP[(h4l >>> 28) & 0x0F] + HEX_MAP[(h4l >>> 24) & 0x0F] +
+        HEX_MAP[(h4l >>> 20) & 0x0F] + HEX_MAP[(h4l >>> 16) & 0x0F] +
+        HEX_MAP[(h4l >>> 12) & 0x0F] + HEX_MAP[(h4l >>> 8) & 0x0F] +
+        HEX_MAP[(h4l >>> 4) & 0x0F] + HEX_MAP[h4l & 0x0F] +
+        HEX_MAP[(h5h >>> 28) & 0x0F] + HEX_MAP[(h5h >>> 24) & 0x0F] +
+        HEX_MAP[(h5h >>> 20) & 0x0F] + HEX_MAP[(h5h >>> 16) & 0x0F] +
+        HEX_MAP[(h5h >>> 12) & 0x0F] + HEX_MAP[(h5h >>> 8) & 0x0F] +
+        HEX_MAP[(h5h >>> 4) & 0x0F] + HEX_MAP[h5h & 0x0F] +
+        HEX_MAP[(h5l >>> 28) & 0x0F] + HEX_MAP[(h5l >>> 24) & 0x0F] +
+        HEX_MAP[(h5l >>> 20) & 0x0F] + HEX_MAP[(h5l >>> 16) & 0x0F] +
+        HEX_MAP[(h5l >>> 12) & 0x0F] + HEX_MAP[(h5l >>> 8) & 0x0F] +
+        HEX_MAP[(h5l >>> 4) & 0x0F] + HEX_MAP[h5l & 0x0F];
     }
     if (bits == 512) {
-      hex += HEX_CHARS[(h6h >>> 28) & 0x0F] + HEX_CHARS[(h6h >>> 24) & 0x0F] +
-        HEX_CHARS[(h6h >>> 20) & 0x0F] + HEX_CHARS[(h6h >>> 16) & 0x0F] +
-        HEX_CHARS[(h6h >>> 12) & 0x0F] + HEX_CHARS[(h6h >>> 8) & 0x0F] +
-        HEX_CHARS[(h6h >>> 4) & 0x0F] + HEX_CHARS[h6h & 0x0F] +
-        HEX_CHARS[(h6l >>> 28) & 0x0F] + HEX_CHARS[(h6l >>> 24) & 0x0F] +
-        HEX_CHARS[(h6l >>> 20) & 0x0F] + HEX_CHARS[(h6l >>> 16) & 0x0F] +
-        HEX_CHARS[(h6l >>> 12) & 0x0F] + HEX_CHARS[(h6l >>> 8) & 0x0F] +
-        HEX_CHARS[(h6l >>> 4) & 0x0F] + HEX_CHARS[h6l & 0x0F] +
-        HEX_CHARS[(h7h >>> 28) & 0x0F] + HEX_CHARS[(h7h >>> 24) & 0x0F] +
-        HEX_CHARS[(h7h >>> 20) & 0x0F] + HEX_CHARS[(h7h >>> 16) & 0x0F] +
-        HEX_CHARS[(h7h >>> 12) & 0x0F] + HEX_CHARS[(h7h >>> 8) & 0x0F] +
-        HEX_CHARS[(h7h >>> 4) & 0x0F] + HEX_CHARS[h7h & 0x0F] +
-        HEX_CHARS[(h7l >>> 28) & 0x0F] + HEX_CHARS[(h7l >>> 24) & 0x0F] +
-        HEX_CHARS[(h7l >>> 20) & 0x0F] + HEX_CHARS[(h7l >>> 16) & 0x0F] +
-        HEX_CHARS[(h7l >>> 12) & 0x0F] + HEX_CHARS[(h7l >>> 8) & 0x0F] +
-        HEX_CHARS[(h7l >>> 4) & 0x0F] + HEX_CHARS[h7l & 0x0F];
+      hex += HEX_MAP[(h6h >>> 28) & 0x0F] + HEX_MAP[(h6h >>> 24) & 0x0F] +
+        HEX_MAP[(h6h >>> 20) & 0x0F] + HEX_MAP[(h6h >>> 16) & 0x0F] +
+        HEX_MAP[(h6h >>> 12) & 0x0F] + HEX_MAP[(h6h >>> 8) & 0x0F] +
+        HEX_MAP[(h6h >>> 4) & 0x0F] + HEX_MAP[h6h & 0x0F] +
+        HEX_MAP[(h6l >>> 28) & 0x0F] + HEX_MAP[(h6l >>> 24) & 0x0F] +
+        HEX_MAP[(h6l >>> 20) & 0x0F] + HEX_MAP[(h6l >>> 16) & 0x0F] +
+        HEX_MAP[(h6l >>> 12) & 0x0F] + HEX_MAP[(h6l >>> 8) & 0x0F] +
+        HEX_MAP[(h6l >>> 4) & 0x0F] + HEX_MAP[h6l & 0x0F] +
+        HEX_MAP[(h7h >>> 28) & 0x0F] + HEX_MAP[(h7h >>> 24) & 0x0F] +
+        HEX_MAP[(h7h >>> 20) & 0x0F] + HEX_MAP[(h7h >>> 16) & 0x0F] +
+        HEX_MAP[(h7h >>> 12) & 0x0F] + HEX_MAP[(h7h >>> 8) & 0x0F] +
+        HEX_MAP[(h7h >>> 4) & 0x0F] + HEX_MAP[h7h & 0x0F] +
+        HEX_MAP[(h7l >>> 28) & 0x0F] + HEX_MAP[(h7l >>> 24) & 0x0F] +
+        HEX_MAP[(h7l >>> 20) & 0x0F] + HEX_MAP[(h7l >>> 16) & 0x0F] +
+        HEX_MAP[(h7l >>> 12) & 0x0F] + HEX_MAP[(h7l >>> 8) & 0x0F] +
+        HEX_MAP[(h7l >>> 4) & 0x0F] + HEX_MAP[h7l & 0x0F];
     }
     return hex;
   };
 
-  Sha512.prototype.toString = Sha512.prototype.hex;
+  ZHash512.prototype.toString = ZHash512.prototype.hex;
 
-  Sha512.prototype.digest = function () {
+  ZHash512.prototype.digest = function () {
     this.finalize();
 
     var h0h = this.h0h, h0l = this.h0l, h1h = this.h1h, h1l = this.h1l,
@@ -766,9 +764,9 @@
     return arr;
   };
 
-  Sha512.prototype.array = Sha512.prototype.digest;
+  ZHash512.prototype.array = ZHash512.prototype.digest;
 
-  Sha512.prototype.arrayBuffer = function () {
+  ZHash512.prototype.arrayBuffer = function () {
     this.finalize();
 
     var bits = this.bits;
@@ -800,13 +798,13 @@
     return buffer;
   };
 
-  Sha512.prototype.clone = function () {
-    var hash = new Sha512(this.bits, false);
+  ZHash512.prototype.clone = function () {
+    var hash = new ZHash512(this.bits, false);
     this.copyTo(hash);
     return hash;
   };
 
-  Sha512.prototype.copyTo = function (hash) {
+  ZHash512.prototype.copyTo = function (hash) {
     var i = 0, attrs = [
       'h0h', 'h0l', 'h1h', 'h1l', 'h2h', 'h2l', 'h3h', 'h3l', 'h4h', 'h4l', 'h5h', 'h5l', 'h6h', 'h6l', 'h7h', 'h7l',
       'start', 'bytes', 'hBytes', 'finalized', 'hashed', 'lastByteIndex'
@@ -819,35 +817,35 @@
     }
   };
 
-  function HmacSha512(key, bits, sharedMemory) {
-    var i, result = formatMessage(key);
-    key = result[0];
-    if (result[1]) {
-      var bytes = [], length = key.length, index = 0, code;
+  function ZHmac512(key, bits, sharedBuffer) {
+    var i, res = normalizeInput(key);
+    key = res[0];
+    if (res[1]) {
+      var bytes = [], length = key.length, idx = 0, code;
       for (var i = 0; i < length; ++i) {
         code = key.charCodeAt(i);
         if (code < 0x80) {
-          bytes[index++] = code;
+          bytes[idx++] = code;
         } else if (code < 0x800) {
-          bytes[index++] = (0xc0 | (code >>> 6));
-          bytes[index++] = (0x80 | (code & 0x3f));
+          bytes[idx++] = (0xc0 | (code >>> 6));
+          bytes[idx++] = (0x80 | (code & 0x3f));
         } else if (code < 0xd800 || code >= 0xe000) {
-          bytes[index++] = (0xe0 | (code >>> 12));
-          bytes[index++] = (0x80 | ((code >>> 6) & 0x3f));
-          bytes[index++] = (0x80 | (code & 0x3f));
+          bytes[idx++] = (0xe0 | (code >>> 12));
+          bytes[idx++] = (0x80 | ((code >>> 6) & 0x3f));
+          bytes[idx++] = (0x80 | (code & 0x3f));
         } else {
           code = 0x10000 + (((code & 0x3ff) << 10) | (key.charCodeAt(++i) & 0x3ff));
-          bytes[index++] = (0xf0 | (code >>> 18));
-          bytes[index++] = (0x80 | ((code >>> 12) & 0x3f));
-          bytes[index++] = (0x80 | ((code >>> 6) & 0x3f));
-          bytes[index++] = (0x80 | (code & 0x3f));
+          bytes[idx++] = (0xf0 | (code >>> 18));
+          bytes[idx++] = (0x80 | ((code >>> 12) & 0x3f));
+          bytes[idx++] = (0x80 | ((code >>> 6) & 0x3f));
+          bytes[idx++] = (0x80 | (code & 0x3f));
         }
       }
       key = bytes;
     }
 
     if (key.length > 128) {
-      key = (new Sha512(bits, true)).update(key).array();
+      key = (new ZHash512(bits, true)).update(key).array();
     }
 
     var oKeyPad = [], iKeyPad = [];
@@ -857,29 +855,29 @@
       iKeyPad[i] = 0x36 ^ b;
     }
 
-    Sha512.call(this, bits, sharedMemory);
+    ZHash512.call(this, bits, sharedBuffer);
 
     this.update(iKeyPad);
     this.oKeyPad = oKeyPad;
     this.inner = true;
-    this.sharedMemory = sharedMemory;
+    this.sharedBuffer = sharedBuffer;
   }
-  HmacSha512.prototype = new Sha512();
+  ZHmac512.prototype = new ZHash512();
 
-  HmacSha512.prototype.finalize = function () {
-    Sha512.prototype.finalize.call(this);
+  ZHmac512.prototype.finalize = function () {
+    ZHash512.prototype.finalize.call(this);
     if (this.inner) {
       this.inner = false;
       var innerHash = this.array();
-      Sha512.call(this, this.bits, this.sharedMemory);
+      ZHash512.call(this, this.bits, this.sharedBuffer);
       this.update(this.oKeyPad);
       this.update(innerHash);
-      Sha512.prototype.finalize.call(this);
+      ZHash512.prototype.finalize.call(this);
     }
   };
 
-  HmacSha512.prototype.clone = function () {
-    var hash = new HmacSha512([], this.bits, false);
+  ZHmac512.prototype.clone = function () {
+    var hash = new ZHmac512([], this.bits, false);
     this.copyTo(hash);
     hash.inner = this.inner;
     for (var i = 0; i < this.oKeyPad.length; ++i) {
@@ -888,26 +886,26 @@
     return hash;
   };
 
-  var exports = createMethod(512);
-  exports.sha512 = exports;
-  exports.sha384 = createMethod(384);
-  exports.sha512_256 = createMethod(256);
-  exports.sha512_224 = createMethod(224);
-  exports.sha512.hmac = createHmacMethod(512);
-  exports.sha384.hmac = createHmacMethod(384);
-  exports.sha512_256.hmac = createHmacMethod(256);
-  exports.sha512_224.hmac = createHmacMethod(224);
+  var api = buildHasher(512);
+  api.sha512 = api;
+  api.sha384 = buildHasher(384);
+  api.sha512_256 = buildHasher(256);
+  api.sha512_224 = buildHasher(224);
+  api.sha512.hmac = buildHmac(512);
+  api.sha384.hmac = buildHmac(384);
+  api.sha512_256.hmac = buildHmac(256);
+  api.sha512_224.hmac = buildHmac(224);
 
-  if (COMMON_JS) {
-    module.exports = exports;
+  if (IS_CJS) {
+    module.exports = api;
   } else {
-    root.sha512 = exports.sha512;
-    root.sha384 = exports.sha384;
-    root.sha512_256 = exports.sha512_256;
-    root.sha512_224 = exports.sha512_224;
-    if (AMD) {
+    context.z_sha512 = api.sha512;
+    context.z_sha384 = api.sha384;
+    context.z_sha512_256 = api.sha512_256;
+    context.z_sha512_224 = api.sha512_224;
+    if (IS_AMD) {
       define(function () {
-        return exports;
+        return api;
       });
     }
   }
