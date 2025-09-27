@@ -21,7 +21,7 @@ _Demo-focused aviator predictor tools — seed-inspection helpers (SHA-512 / SHA
 <img src="https://decryptor.net/wp-content/uploads/2025/09/flame-21186_256.gif" width="100"/>
 </div>
 
-Welcome to the <strong>Aviator Predictor</strong> repository! SHA-512 decryption powers our Aviator predictor and crash predictor for Stake.us and 1xBet crash games. Use decryption-based Aviator predictor APK, Aviator predictor app, and crash predictors for Stake.us, 1xBet, Plinko, and more. Start your free trial to optimize Aviator bets.
+Welcome to the <strong>Aviator Predictor</strong> repository! SHA256 decryption powers our Aviator predictor and crash predictor for Stake.us and 1xBet crash games. Use decryption-based Aviator predictor APK, Aviator predictor app, and crash predictors for Stake.us, 1xBet, Plinko, and more. Start your free trial to optimize Aviator bets.
 ## Overview
 
 The **Aviator Predictor** is a powerful application that utilizes advanced algorithms like sha 512 and analyze historical game data. It offers users real-time predictions, making it easier to decide when to place bets. The app is available for free, allowing you to experience its features without any financial commitment.
